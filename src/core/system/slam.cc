@@ -112,6 +112,8 @@ bool SlamSystem::Init(const std::string& yaml_path) {
             livox_topic_, qos, [this](livox_ros_driver2::msg::CustomMsg ::SharedPtr cloud) {
                 Timer::Evaluate([&]() { ProcessLidar(cloud); }, "Proc Lidar", true);
             });
+        
+        odom_pub_ = node_->create_publisher<nav_msgs::msg::Odometry>("lio_odom", 10);
 
         savemap_service_ = node_->create_service<SaveMapService>(
             "lightning/save_map", [this](const SaveMapService::Request::SharedPtr& req,
@@ -245,6 +247,25 @@ void SlamSystem::ProcessLidar(const sensor_msgs::msg::PointCloud2::SharedPtr& cl
 
     lio_->ProcessPointCloud2(cloud);
     lio_->Run();
+    auto state = lio_->GetState();
+    if (state.pose_is_ok_) {
+        nav_msgs::msg::Odometry odom_msg;
+        odom_msg.header.stamp = node_->now();;
+        odom_msg.header.frame_id = "odom";
+        odom_msg.child_frame_id = "base_link";
+
+        odom_msg.pose.pose.position.x = state.pos_.x();
+        odom_msg.pose.pose.position.y = state.pos_.y();
+        odom_msg.pose.pose.position.z = state.pos_.z();
+
+        auto q = state.rot_.unit_quaternion();
+        odom_msg.pose.pose.orientation.x = q.x();
+        odom_msg.pose.pose.orientation.y = q.y();
+        odom_msg.pose.pose.orientation.z = q.z();
+        odom_msg.pose.pose.orientation.w = q.w();
+
+        odom_pub_->publish(odom_msg);
+    }
 
     auto kf = lio_->GetKeyframe();
     if (kf != cur_kf_) {
@@ -268,6 +289,23 @@ void SlamSystem::ProcessLidar(const sensor_msgs::msg::PointCloud2::SharedPtr& cl
     if (ui_) {
         ui_->UpdateKF(cur_kf_);
     }
+    if (odom_pub_ && cur_kf_) {
+        nav_msgs::msg::Odometry odom_msg;
+        odom_msg.header.stamp = node_->now();
+        odom_msg.header.frame_id = "odom";
+        odom_msg.child_frame_id = "base_link";
+        // 填充位置
+        odom_msg.pose.pose.position.x = cur_kf_->GetOptPose().translation().x();
+        odom_msg.pose.pose.position.y = cur_kf_->GetOptPose().translation().y();
+        odom_msg.pose.pose.position.z = cur_kf_->GetOptPose().translation().z();
+        auto q = cur_kf_->GetOptPose().unit_quaternion();
+        odom_msg.pose.pose.orientation.x = q.x();
+        odom_msg.pose.pose.orientation.y = q.y();
+        odom_msg.pose.pose.orientation.z = q.z();
+        odom_msg.pose.pose.orientation.w = q.w();
+
+        odom_pub_->publish(odom_msg);
+    }
 }
 
 void SlamSystem::ProcessLidar(const livox_ros_driver2::msg::CustomMsg::SharedPtr& cloud) {
@@ -277,6 +315,26 @@ void SlamSystem::ProcessLidar(const livox_ros_driver2::msg::CustomMsg::SharedPtr
 
     lio_->ProcessPointCloud2(cloud);
     lio_->Run();
+    auto state = lio_->GetState();
+    if (state.pose_is_ok_) {
+        nav_msgs::msg::Odometry odom_msg;
+        odom_msg.header.stamp = node_->now();;
+        odom_msg.header.frame_id = "odom";
+        odom_msg.child_frame_id = "base_link";
+
+        odom_msg.pose.pose.position.x = state.pos_.x();
+        odom_msg.pose.pose.position.y = state.pos_.y();
+        odom_msg.pose.pose.position.z = state.pos_.z();
+
+        auto q = state.rot_.unit_quaternion();
+        odom_msg.pose.pose.orientation.x = q.x();
+        odom_msg.pose.pose.orientation.y = q.y();
+        odom_msg.pose.pose.orientation.z = q.z();
+        odom_msg.pose.pose.orientation.w = q.w();
+
+        odom_pub_->publish(odom_msg);
+    }
+
 
     auto kf = lio_->GetKeyframe();
     if (kf != cur_kf_) {

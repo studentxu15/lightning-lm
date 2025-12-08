@@ -56,6 +56,31 @@ bool LocSystem::Init(const std::string &yaml_path) {
         livox_topic_, qos, [this](livox_ros_driver2::msg::CustomMsg ::SharedPtr cloud) {
             Timer::Evaluate([&]() { ProcessLidar(cloud); }, "Proc Lidar", true);
         });
+    
+    odom_pub_ = node_->create_publisher<nav_msgs::msg::Odometry>("lio_odom", 10);
+    loc_->SetOdomCallback([this](const lightning::loc::LocalizationResult& res) {
+        if (!res.valid_) {
+            RCLCPP_WARN(node_->get_logger(), "LocalizationResult invalid, skipping odom publish");
+        }
+
+        nav_msgs::msg::Odometry odom_msg;
+        odom_msg.header.stamp = node_->now();
+        odom_msg.header.frame_id = "odom";
+        odom_msg.child_frame_id = "base_link";
+
+        // 位姿
+        odom_msg.pose.pose.position.x = res.pose_.translation().x();
+        odom_msg.pose.pose.position.y = res.pose_.translation().y();
+        odom_msg.pose.pose.position.z = res.pose_.translation().z();
+
+        auto q = res.pose_.so3().unit_quaternion();
+        odom_msg.pose.pose.orientation.x = q.x();
+        odom_msg.pose.pose.orientation.y = q.y();
+        odom_msg.pose.pose.orientation.z = q.z();
+        odom_msg.pose.pose.orientation.w = q.w();
+
+        odom_pub_->publish(odom_msg);
+    });
 
     if (options_.pub_tf_) {
         tf_broadcaster_ = std::make_shared<tf2_ros::TransformBroadcaster>(node_);

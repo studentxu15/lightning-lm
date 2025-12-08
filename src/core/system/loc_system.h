@@ -16,6 +16,8 @@
 #include "common/imu.h"
 #include "common/keyframe.h"
 
+#include "nav_msgs/msg/odometry.hpp"
+
 namespace lightning {
 
 namespace loc {
@@ -66,6 +68,8 @@ class LocSystem {
     rclcpp::Subscription<sensor_msgs::msg::Imu>::SharedPtr imu_sub_ = nullptr;
     rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr cloud_sub_ = nullptr;
     rclcpp::Subscription<livox_ros_driver2::msg::CustomMsg>::SharedPtr livox_sub_ = nullptr;
+
+    rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr odom_pub_ = nullptr;
 };
 
 };  // namespace lightning
