@@ -51,7 +51,7 @@ include_directories(
         ${CMAKE_CURRENT_BINARY_DIR}/rosidl_generator_cpp
 )
 
-install(DIRECTORY config
+install(DIRECTORY config launch
         DESTINATION share/${PROJECT_NAME}/
 )
 

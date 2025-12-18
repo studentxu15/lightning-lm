@@ -9,7 +9,7 @@ common:
 fasterlio:
   lidar_type: 1                # 1 for Livox serials LiDAR, 2 for Velodyne LiDAR, 3 for ouster LiDAR,
   scan_line: 32
-  blind: 0.1                # 盲区，小于盲区距离的不会处理
+  blind: 0.2                # 盲区，小于盲区距离的不会处理
   time_scale: 1e-3             # 兼容不同数据集的时间单位，仅对Velodyne LiDAR(lidar_type=2)生效
 
   skip_lidar_num: 0 # 点云的跳帧情况
@@ -46,7 +46,7 @@ g2p5:
 
 system:
   with_loop_closing: true # 是否需要回环检测
-  with_ui: false # 是否需要3D UI
+  with_ui: true # 是否需要3D UI
   with_2dui: false # 是否需要2D UI
   with_g2p5: true # 是否需要栅格地图
   step_on_kf: false # 是否在关键帧处暂停
@@ -120,8 +120,8 @@ pgo:
   rtk_outlier_th: 1.0
   smooth_factor: 0.01
 roi:
-  height_max: 0.5
-  height_min: -2.0
+  height_max: 10.0
+  height_min: 0.0
   range_max: 70
   range_min: 3.0
 ui:
