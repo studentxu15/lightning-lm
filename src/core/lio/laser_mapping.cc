@@ -150,6 +150,9 @@ bool LaserMapping::Run() {
     if (!SyncPackages()) {
         return false;
     }
+    if (last_lidar_time_ > 0 && (measures_.lidar_begin_time_ - last_lidar_time_) > 0.5) {
+        LOG(ERROR) << "检测到雷达断流，时长：" << (measures_.lidar_begin_time_ - last_lidar_time_);
+    }
 
     /// IMU process, kf prediction, undistortion
     p_imu_->Process(measures_, kf_, scan_undistort_);
@@ -194,9 +197,6 @@ bool LaserMapping::Run() {
     // LOG(INFO) << "LIO get cloud at beg: " << std::setprecision(14) << measures_.lidar_begin_time_
     //           << ", end: " << measures_.lidar_end_time_;
 
-    if (last_lidar_time_ > 0 && (measures_.lidar_begin_time_ - last_lidar_time_) > 0.5) {
-        LOG(ERROR) << "检测到雷达断流，时长：" << (measures_.lidar_begin_time_ - last_lidar_time_);
-    }
 
     last_lidar_time_ = measures_.lidar_begin_time_;
 
@@ -278,6 +278,38 @@ bool LaserMapping::Run() {
     }
 
     return true;
+}
+
+void LaserMapping::ResetForDataGap() {
+    // 1. 重置增量地图（保留位置姿态）
+    LOG(INFO) << "Resetting iVox map";
+    ivox_ = std::make_shared<IVoxType>(ivox_options_); // 重建地图
+    
+    // 2. 重置相关点云缓存
+    if (scan_undistort_) scan_undistort_->clear();
+    if (scan_down_body_) scan_down_body_->clear();
+    if (scan_down_world_) scan_down_world_->clear();
+    
+    // 3. 重置状态向量（保留位置姿态，重置速度/bias）
+    NavState current_state = kf_.GetX();
+    current_state.vel_.setZero();
+    current_state.bg_.setZero();
+    current_state.ba_.setZero();
+    kf_.ChangeX(current_state);
+    
+    // 4. 重置协方差
+    Eigen::Matrix<double, NavState::dim, NavState::dim> P = kf_.GetP();
+    P.block<3, 3>(12, 12) *= 100.0;  // 速度协方差放大
+    P.block<3, 3>(15, 15) *= 100.0;  // 陀螺仪bias协方差放大
+    P.block<3, 3>(18, 18) *= 100.0;  // 加速度计bias协方差放大
+    kf_.ChangeP(P);
+    
+    // 5. 重置IMU处理器
+    p_imu_->Reset();
+    
+    // 6. 重置第一帧标志
+    flg_first_scan_ = true;
+    LOG(INFO) << "Map reset complete, ready for new data";
 }
 
 void LaserMapping::MakeKF() {

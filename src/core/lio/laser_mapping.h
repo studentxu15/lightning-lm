@@ -123,6 +123,7 @@ class LaserMapping {
     }
 
     void MapIncremental();
+    void ResetForDataGap();
 
     bool LoadParamsFromYAML(const std::string &yaml);
 
