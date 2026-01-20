@@ -114,6 +114,7 @@ bool SlamSystem::Init(const std::string& yaml_path) {
             });
         
         odom_pub_ = node_->create_publisher<nav_msgs::msg::Odometry>("lio_odom", 10);
+        odomimu_pub_ = node_->create_publisher<nav_msgs::msg::Odometry>("lio_odom/imu", 10);
 
         savemap_service_ = node_->create_service<SaveMapService>(
             "lightning/save_map", [this](const SaveMapService::Request::SharedPtr& req,
@@ -238,7 +239,10 @@ void SlamSystem::ProcessIMU(const lightning::IMUPtr& imu) {
         return;
     }
     lio_->ProcessIMU(imu);
+    PublishIMUOdom();
 }
+
+
 
 void SlamSystem::ProcessLidar(const sensor_msgs::msg::PointCloud2::SharedPtr& cloud) {
     if (running_ == false) {
@@ -358,6 +362,37 @@ void SlamSystem::ProcessLidar(const livox_ros_driver2::msg::CustomMsg::SharedPtr
     if (ui_) {
         ui_->UpdateKF(cur_kf_);
     }
+}
+
+void SlamSystem::PublishIMUOdom() {
+    if (odomimu_pub_ == nullptr || lio_ == nullptr) {
+        return;
+    }
+    auto imu_state = lio_->GetIMUState();
+    if (!imu_state.pose_is_ok_) {
+        return; // IMU状态未初始化好，不发布
+    }
+
+    nav_msgs::msg::Odometry imu_odom;
+    imu_odom.header.stamp = node_->now();
+    imu_odom.header.frame_id = "odom";
+    imu_odom.child_frame_id = "lidar_footprint";
+
+    // 位置信息
+    imu_odom.pose.pose.position.x = imu_state.pos_.x();
+    imu_odom.pose.pose.position.y = imu_state.pos_.y();
+    imu_odom.pose.pose.position.z = imu_state.pos_.z();
+
+    // 方向四元数
+    auto q = imu_state.rot_.unit_quaternion();
+    imu_odom.pose.pose.orientation.x = q.x();
+    imu_odom.pose.pose.orientation.y = q.y();
+    imu_odom.pose.pose.orientation.z = q.z();
+    imu_odom.pose.pose.orientation.w = q.w();
+
+    // TODO: 你可以根据需要填充线速度和角速度，或留空
+
+    odomimu_pub_->publish(imu_odom);
 }
 
 void SlamSystem::Spin() {

@@ -74,6 +74,9 @@ class SlamSystem {
     void ProcessLidar(const sensor_msgs::msg::PointCloud2::SharedPtr& cloud);
     void ProcessLidar(const livox_ros_driver2::msg::CustomMsg::SharedPtr& cloud);
 
+    /// 发布imu高频里程计
+    void PublishIMUOdom();
+
     /// 实时模式下的spin
     void Spin();
 
@@ -106,6 +109,7 @@ class SlamSystem {
     rclcpp::Subscription<livox_ros_driver2::msg::CustomMsg>::SharedPtr livox_sub_ = nullptr;
 
     rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr odom_pub_ = nullptr;
+    rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr odomimu_pub_ = nullptr;
 
 };
 }  // namespace lightning
