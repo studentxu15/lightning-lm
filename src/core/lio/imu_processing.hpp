@@ -322,17 +322,17 @@ namespace lightning
         {
             return;
         }
-        if (!imu_need_init_ && !meas.imu_.empty())
-        {
-            double time_gap = meas.imu_.front()->timestamp -
-                              last_imu_->timestamp;
-            if (time_gap > 0.1)
-            {
-                // ROS_WARN("Large IMU gap detected: %.3fs", time_gap);
-                Reset(); // 重置IMU处理器状态
-                imu_need_init_ = true;
-            }
-        }
+        // if (!imu_need_init_ && !meas.imu_.empty())
+        // {
+        //     double time_gap = meas.imu_.front()->timestamp -
+        //                       last_imu_->timestamp;
+        //     if (time_gap > 0.1)
+        //     {
+        //         // ROS_WARN("Large IMU gap detected: %.3fs", time_gap);
+        //         Reset(); // 重置IMU处理器状态
+        //         imu_need_init_ = true;
+        //     }
+        // }
 
         if (imu_need_init_)
         {

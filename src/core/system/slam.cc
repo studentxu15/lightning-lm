@@ -256,7 +256,7 @@ void SlamSystem::ProcessLidar(const sensor_msgs::msg::PointCloud2::SharedPtr& cl
         nav_msgs::msg::Odometry odom_msg;
         odom_msg.header.stamp = node_->now();;
         odom_msg.header.frame_id = "odom";
-        odom_msg.child_frame_id = "base_link";
+        odom_msg.child_frame_id = "lidar_footprint";
 
         odom_msg.pose.pose.position.x = state.pos_.x();
         odom_msg.pose.pose.position.y = state.pos_.y();
@@ -297,7 +297,7 @@ void SlamSystem::ProcessLidar(const sensor_msgs::msg::PointCloud2::SharedPtr& cl
         nav_msgs::msg::Odometry odom_msg;
         odom_msg.header.stamp = node_->now();
         odom_msg.header.frame_id = "odom";
-        odom_msg.child_frame_id = "base_link";
+        odom_msg.child_frame_id = "lidar_footprint";
         // 填充位置
         odom_msg.pose.pose.position.x = cur_kf_->GetOptPose().translation().x();
         odom_msg.pose.pose.position.y = cur_kf_->GetOptPose().translation().y();
@@ -324,7 +324,7 @@ void SlamSystem::ProcessLidar(const livox_ros_driver2::msg::CustomMsg::SharedPtr
         nav_msgs::msg::Odometry odom_msg;
         odom_msg.header.stamp = node_->now();;
         odom_msg.header.frame_id = "odom";
-        odom_msg.child_frame_id = "base_link";
+        odom_msg.child_frame_id = "lidar_footprint";
 
         odom_msg.pose.pose.position.x = state.pos_.x();
         odom_msg.pose.pose.position.y = state.pos_.y();
