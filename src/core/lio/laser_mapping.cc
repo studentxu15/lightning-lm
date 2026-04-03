@@ -5,6 +5,11 @@
 #include "common/options.h"
 #include "core/lightning_math.hpp"
 #include "laser_mapping.h"
+
+#include <opencv2/core/mat.hpp>
+#include <opencv2/highgui.hpp>
+#include <opencv2/imgproc.hpp>
+
 #include "ui/pangolin_window.h"
 #include "wrapper/ros_utils.h"
 
@@ -66,6 +71,14 @@ bool LaserMapping::LoadParamsFromYAML(const std::string &yaml_file) {
         skip_lidar_num_ = yaml["fasterlio"]["skip_lidar_num"].as<int>();
         enable_skip_lidar_ = skip_lidar_num_ > 0;
 
+        float height_max = yaml["roi"]["height_max"].as<float>();
+        float height_min = yaml["roi"]["height_min"].as<float>();
+
+        preprocess_->SetHeightROI(height_max, height_min);
+
+        options_.kf_dis_th_ = yaml["fasterlio"]["kf_dis_th"].as<double>();
+        options_.kf_angle_th_ = yaml["fasterlio"]["kf_angle_th"].as<double>() * M_PI / 180.0;
+
     } catch (...) {
         LOG(ERROR) << "bad conversion";
         return false;
@@ -81,6 +94,9 @@ bool LaserMapping::LoadParamsFromYAML(const std::string &yaml_file) {
     } else if (lidar_type == 3) {
         preprocess_->SetLidarType(LidarType::OUST64);
         LOG(INFO) << "Using OUST 64 Lidar";
+    } else if (lidar_type == 4) {
+        preprocess_->SetLidarType(LidarType::ROBOSENSE);
+        LOG(INFO) << "Using RoboSense Lidar";
     } else {
         LOG(WARNING) << "unknown lidar_type";
         return false;
@@ -148,10 +164,8 @@ void LaserMapping::ProcessIMU(const lightning::IMUPtr &imu) {
 
 bool LaserMapping::Run() {
     if (!SyncPackages()) {
+        LOG(WARNING) << "sync package failed";
         return false;
-    }
-    if (last_lidar_time_ > 0 && (measures_.lidar_begin_time_ - last_lidar_time_) > 0.5) {
-        LOG(ERROR) << "检测到雷达断流，时长：" << (measures_.lidar_begin_time_ - last_lidar_time_);
     }
 
     /// IMU process, kf prediction, undistortion
@@ -197,6 +211,9 @@ bool LaserMapping::Run() {
     // LOG(INFO) << "LIO get cloud at beg: " << std::setprecision(14) << measures_.lidar_begin_time_
     //           << ", end: " << measures_.lidar_end_time_;
 
+    if (last_lidar_time_ > 0 && (measures_.lidar_begin_time_ - last_lidar_time_) > 0.5) {
+        LOG(ERROR) << "检测到雷达断流，时长：" << (measures_.lidar_begin_time_ - last_lidar_time_);
+    }
 
     last_lidar_time_ = measures_.lidar_begin_time_;
 
@@ -211,6 +228,17 @@ bool LaserMapping::Run() {
         LOG(WARNING) << "Too few points, skip this scan!" << scan_undistort_->size() << ", " << scan_down_body_->size();
         return false;
     }
+
+    if (cur_pts < (scan_undistort_->size() * 0.1)) {
+        /// 降采样太狠了,有效点数不够，用
+
+        auto v = voxel_scan_;
+        v.setLeafSize(0.1, 0.1, 0.1);
+        v.setInputCloud(scan_undistort_);
+        v.filter(*scan_down_body_);
+        cur_pts = scan_down_body_->size();
+    }
+
     scan_down_world_->resize(cur_pts);
     nearest_points_.resize(cur_pts);
 
@@ -218,7 +246,7 @@ bool LaserMapping::Run() {
         [&, this]() {
             // 成员变量预分配
             residuals_.resize(cur_pts, 0);
-            point_selected_surf_.resize(cur_pts, true);
+            point_selected_surf_.resize(cur_pts, 1);
             plane_coef_.resize(cur_pts, Vec4f::Zero());
 
             auto old_state = kf_.GetX();
@@ -234,6 +262,9 @@ bool LaserMapping::Run() {
                 LOG(INFO) << "set state as prediction";
             }
 
+            SE3 delta = old_state.GetPose().inverse() * state_point_.GetPose();
+            // LOG(INFO) << "delta norm: " << delta.translation().norm() << ", " << delta.so3().log().norm() * 180 / M_PI;
+
             // LOG(INFO) << "old yaw: " << old_state.rot_.angleZ() << ", new: " << state_point_.rot_.angleZ();
 
             state_point_.timestamp_ = measures_.lidar_end_time_;
@@ -242,11 +273,8 @@ bool LaserMapping::Run() {
         },
         "IEKF Solve and Update");
 
-    // update local map
-    Timer::Evaluate([&, this]() { MapIncremental(); }, "    Incremental Mapping");
-
-    // LOG(INFO) << "[ mapping ]: In num: " << scan_undistort_->points.size() << " down " << cur_pts
-    //           << " Map grid num: " << ivox_->NumValidGrids() << " effect num : " << effect_feat_num_;
+    LOG(INFO) << "[ mapping ]: In num: " << scan_undistort_->points.size() << " down " << cur_pts
+              << " Map grid num: " << ivox_->NumValidGrids() << " effect num : " << effect_feat_num_;
 
     /// keyframes
     if (last_kf_ == nullptr) {
@@ -259,6 +287,8 @@ bool LaserMapping::Run() {
             MakeKF();
         } else if (!options_.is_in_slam_mode_ && (state_point_.timestamp_ - last_kf_->GetState().timestamp_) > 2.0) {
             MakeKF();
+        } else if ((last_pose.so3().inverse() * cur_pose.so3()).log().norm() > 1.0 * M_PI / 180.0) {
+            // MapIncremental();
         }
     }
 
@@ -338,6 +368,9 @@ void LaserMapping::MakeKF() {
     }
 
     last_kf_ = kf;
+
+    // 有keyframes时更新local map
+    Timer::Evaluate([&, this]() { MapIncremental(); }, "    Incremental Mapping");
 }
 
 void LaserMapping::ProcessPointCloud2(const sensor_msgs::msg::PointCloud2::SharedPtr &msg) {
@@ -347,8 +380,8 @@ void LaserMapping::ProcessPointCloud2(const sensor_msgs::msg::PointCloud2::Share
             scan_count_++;
             double timestamp = ToSec(msg->header.stamp);
             if (timestamp < last_timestamp_lidar_) {
-                LOG(ERROR) << "lidar loop back, clear buffer";
-                lidar_buffer_.clear();
+                LOG(ERROR) << "lidar loop back, dt: " << timestamp - last_timestamp_lidar_;
+                return;
             }
 
             LOG(INFO) << "get cloud at " << std::setprecision(14) << timestamp
@@ -425,8 +458,15 @@ bool LaserMapping::SyncPackages() {
         } else {
             scan_num_++;
             lidar_end_time_ = measures_.lidar_begin_time_ + measures_.scan_->points.back().time / double(1000);
+
             lidar_mean_scantime_ +=
                 (measures_.scan_->points.back().time / double(1000) - lidar_mean_scantime_) / scan_num_;
+
+            if ((lidar_end_time_ - measures_.lidar_begin_time_) > 5 * lo::lidar_time_interval) {
+                /// timestamp 有异常
+                lidar_end_time_ = measures_.lidar_begin_time_ + lo::lidar_time_interval;
+                lidar_mean_scantime_ = lo::lidar_time_interval;
+            }
         }
 
         lo::lidar_time_interval = lidar_mean_scantime_;
@@ -670,9 +710,13 @@ void LaserMapping::ObsModel(NavState &s, ESKF::CustomObservationModel &obs) {
         }
     }
 
-    std::sort(res_sq2.begin(), res_sq2.end());
-    obs.lidar_residual_mean_ = res_sq2[res_sq2.size() / 2];
-    obs.lidar_residual_max_ = res_sq2[res_sq2.size() - 1];
+    if (!res_sq2.empty()) {
+        std::sort(res_sq2.begin(), res_sq2.end());
+        obs.lidar_residual_mean_ = res_sq2[res_sq2.size() / 2];
+        obs.lidar_residual_max_ = res_sq2[res_sq2.size() - 1];
+        // LOG(INFO) << "residual mean: " << obs.lidar_residual_mean_ << ", max: " << obs.lidar_residual_max_
+        //           << ", 85%: " << res_sq2[res_sq2.size() * 0.85];
+    }
 }
 
 ///////////////////////////  private method /////////////////////////////////////////////////////////////////////

@@ -336,7 +336,7 @@ void ESKF::Update(ESKF::ObsType obs, const double& R) {
                 }
             }
 
-            P_ = L_ - K_H.block<23, 12>(0, 0) * P_.template block<15, 23>(0, 0);
+            P_ = L_ - K_H.block<23, 12>(0, 0) * P_.template block<12, 23>(0, 0);
 
             break;
         }
