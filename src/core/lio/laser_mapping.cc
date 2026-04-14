@@ -212,6 +212,7 @@ bool LaserMapping::Run() {
         }
     }
 
+    // LOG(INFO) << "=============================";
     // LOG(INFO) << "LIO get cloud at beg: " << std::setprecision(14) << measures_.lidar_begin_time_
     //           << ", end: " << measures_.lidar_end_time_;
 
@@ -259,35 +260,26 @@ bool LaserMapping::Run() {
     point_selected_icp_.resize(cur_pts, 1);
     plane_coef_.resize(cur_pts, Vec4f::Zero());
 
-            auto old_state = kf_.GetX();
+    auto pred_state = kf_.GetX();
+    // pred_state.pos_ = state_point_.pos_;  // 假定位置不动行不行,防止速度漂移
+    // kf_.ChangeX(pred_state);
 
-            kf_.Update(ESKF::ObsType::LIDAR, 1e-3);
-            state_point_ = kf_.GetX();
+    kf_.Update(ESKF::ObsType::LIDAR, 1.0);
 
-            if (keep_first_imu_estimation_ && all_keyframes_.size() < 5 &&
-                (old_state.rot_.inverse() * state_point_.rot_).log().norm() > 0.3 * M_PI / 180) {
-                kf_.ChangeX(old_state);
-                state_point_ = old_state;
+    state_point_ = kf_.GetX();
+    state_point_.timestamp_ = measures_.lidar_end_time_;
 
-                LOG(INFO) << "set state as prediction";
-            }
+    const double delta_translation = (pred_state.pos_ - state_point_.pos_).norm();
+    const double delta_rotation_deg = (pred_state.rot_.inverse() * state_point_.rot_).log().norm() * 180.0 / M_PI;
+    const double delta_velocity = (pred_state.vel_ - state_point_.vel_).norm();
 
-            SE3 delta = old_state.GetPose().inverse() * state_point_.GetPose();
-            LOG(INFO) << "delta norm: " << delta.translation().norm() << ", " << delta.so3().log().norm() * 180 / M_PI;
+    const double current_speed = state_point_.vel_.norm();
 
-            // LOG(INFO) << "old yaw: " << old_state.rot_.angleZ() << ", new: " << state_point_.rot_.angleZ();
-
-            state_point_.timestamp_ = measures_.lidar_end_time_;
-            euler_cur_ = state_point_.rot_;
-            pos_lidar_ = state_point_.pos_ + state_point_.rot_ * state_point_.offset_t_lidar_;
-        },
-        "IEKF Solve and Update");
-
-    LOG(INFO) << "[ mapping ]: In num: " << scan_undistort_->points.size() << " down " << cur_pts
-              << " Map grid num: " << ivox_->NumValidGrids() << " effect num : " << effect_feat_surf_ << ", "
-              << effect_feat_icp_;
-    LOG(INFO) << "delta trans: " << (pred_state.pos_ - state_point_.pos_).transpose()
-              << ", ang: " << delta_rotation_deg;
+    // LOG(INFO) << "[ mapping ]: In num: " << scan_undistort_->points.size() << " down " << cur_pts
+    //           << " Map grid num: " << ivox_->NumValidGrids() << " effect num : " << effect_feat_surf_ << ", "
+    //           << effect_feat_icp_;
+    // LOG(INFO) << "delta trans: " << (pred_state.pos_ - state_point_.pos_).transpose()
+    //           << ", ang: " << delta_rotation_deg;
     // LOG(INFO) << "P diag: " << kf_.GetP().diagonal().transpose();
 
     // Vec3d v_from_last = (state_point_.pos_ - last_state.pos_) / (state_point_.timestamp_ - last_state.timestamp_);
@@ -329,6 +321,10 @@ bool LaserMapping::Run() {
     if (ui_) {
         ui_->UpdateScan(scan_down_body_, state_point_.GetPose());
     }
+
+    // LOG(INFO) << "LIO state: " << state_point_.pos_.transpose() << ", yaw "
+    //           << state_point_.rot_.angleZ<double>() * 180 / M_PI << ", vel: " << state_point_.vel_.transpose()
+    //           << ", grav: " << state_point_.grav_.transpose() << ", grav norm: " << state_point_.grav_.norm();
 
     return true;
 }
@@ -482,6 +478,7 @@ void LaserMapping::ProcessPointCloud2(CloudPtr cloud) {
 
 bool LaserMapping::SyncPackages() {
     if (lidar_buffer_.empty() || imu_buffer_.empty()) {
+        LOG(INFO) << "lidar or imu is empty";
         return false;
     }
 
@@ -511,12 +508,13 @@ bool LaserMapping::SyncPackages() {
 
         lo::lidar_time_interval = lidar_mean_scantime_;
 
-        LOG(INFO) << "recompute lidar end time: " << std::setprecision(14) << lidar_end_time_;
+        // LOG(INFO) << "recompute lidar end time: " << std::setprecision(14) << lidar_end_time_;
         measures_.lidar_end_time_ = lidar_end_time_;
         lidar_pushed_ = true;
     }
 
     if (last_timestamp_imu_ < lidar_end_time_) {
+        LOG(INFO) << "sync failed: " << std::setprecision(14) << last_timestamp_imu_ << ", " << lidar_end_time_;
         return false;
     }
 

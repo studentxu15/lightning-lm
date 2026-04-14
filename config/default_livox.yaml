@@ -26,8 +26,8 @@ fasterlio:
 
   acc_cov: 0.1
   gyr_cov: 0.1
-  b_acc_cov: 0.0001
-  b_gyr_cov: 0.0001
+  b_acc_cov: 0.001
+  b_gyr_cov: 0.001
   extrinsic_est_en: false      # true: enable the online estimation of IMU-LiDAR extrinsic
   extrinsic_T: [ 0, 0, 0.28 ]
   extrinsic_R: [ 1, 0, 0,
@@ -129,9 +129,9 @@ pgo:
   smooth_factor: 0.01
 roi:
   height_max: 10.0
-  height_min: 0.0
+  height_min: -1.0
   range_max: 70
-  range_min: 3.0
+  range_min: 1.0
 ui:
   car_length: 2.0
   car_width: 1.6

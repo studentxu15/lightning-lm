@@ -94,6 +94,7 @@ void PointCloudPreprocess::Process(const livox_ros_driver2::msg::CustomMsg::Shar
 void PointCloudPreprocess::Oust64Handler(const sensor_msgs::msg::PointCloud2::SharedPtr &msg) {
     cloud_out_.clear();
     cloud_full_.clear();
+
     pcl::PointCloud<ouster_ros::Point> pl_orig;
     pcl::fromROSMsg(*msg, pl_orig);
     int plsize = pl_orig.size();

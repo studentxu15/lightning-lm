@@ -81,7 +81,7 @@ void LoopClosing::HandleKF(Keyframe::Ptr kf) {
     DetectLoopCandidates();
 
     if (options_.verbose_) {
-        LOG(INFO) << "lc: get kf " << cur_kf_->GetID() << " candi: " << candidates_.size();
+        // LOG(INFO) << "lc: get kf " << cur_kf_->GetID() << " candi: " << candidates_.size();
     }
 
     // 计算回环位姿

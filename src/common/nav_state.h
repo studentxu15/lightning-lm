@@ -164,7 +164,7 @@ struct NavState {
     SO3 rot_;                               // 旋转
     Vec3d vel_ = Vec3d::Zero();             // 速度
     Vec3d bg_ = Vec3d::Zero();              // 陀螺零偏
-    Vec3d grav_ = Vec3d(0.0, 0.0, -9.81);   // 固定重力向量（不参与状态估计）
+    Vec3d grav_ = Vec3d(0.0, 0.0, -1.0);   // 固定重力向量（不参与状态估计）
 };
 
 }  // namespace lightning
